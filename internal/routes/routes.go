@@ -6,7 +6,14 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func Register(app *fiber.App, auth *handlers.AuthHandler, boards *handlers.BoardHandler, tasks *handlers.TaskHandler) {
+func Register(
+	app *fiber.App,
+	auth *handlers.AuthHandler,
+	boards *handlers.BoardHandler,
+	tasks *handlers.TaskHandler,
+	notes *handlers.NoteHandler,
+	timeline *handlers.TimelineHandler,
+) {
 	api := app.Group("/api")
 
 	// Public
@@ -14,29 +21,35 @@ func Register(app *fiber.App, auth *handlers.AuthHandler, boards *handlers.Board
 	api.Post("/register", auth.Register)
 
 	// Protected
-	protected := api.Group("", middleware.JWTProtected())
+	prot := api.Group("", middleware.JWTProtected())
 
 	// Boards
-	protected.Post("/boards", boards.Create)
-	protected.Get("/boards", boards.List)
-	protected.Get("/boards/:id", boards.Get)
-	protected.Patch("/boards/:id", boards.Update)
-	protected.Delete("/boards/:id", boards.Delete)
+	prot.Post("/boards", boards.Create)
+	prot.Get("/boards", boards.List)
+	prot.Get("/boards/:id", boards.Get)
+	prot.Patch("/boards/:id", boards.Update)
+	prot.Delete("/boards/:id", boards.Delete)
 
-	// Tasks (scoped by board)
-	protected.Get("/boards/:boardId/tasks", tasks.ListByBoard)
-	protected.Post("/boards/:boardId/tasks", tasks.Create)
+	// Tasks
+	prot.Get("/boards/:boardId/tasks", tasks.ListByBoard)
+	prot.Post("/boards/:boardId/tasks", tasks.Create)
+	prot.Get("/tasks/:id", tasks.Get)
+	prot.Patch("/tasks/:id", tasks.Update)
+	prot.Delete("/tasks/:id", tasks.Delete)
+	prot.Post("/tasks/:id/move", tasks.Move)
 
-	// Single task ops
-	protected.Get("/tasks/:id", tasks.Get)
-	protected.Patch("/tasks/:id", tasks.Update)
-	protected.Delete("/tasks/:id", tasks.Delete)
+	// Notes
+	prot.Post("/notes", notes.Create)
+	prot.Get("/boards/:boardId/notes", notes.ListByBoard)
+	prot.Get("/tasks/:taskId/notes", notes.ListByTask)
+	prot.Patch("/notes/:id", notes.Update)
+	prot.Delete("/notes/:id", notes.Delete)
 
-	// DnD move
-	protected.Post("/tasks/:id/move", tasks.Move)
+	// Timeline
+	prot.Get("/timeline", timeline.Get)
 
-	// Example whoami
-	protected.Get("/me", func(c *fiber.Ctx) error {
+	// Whoami
+	prot.Get("/me", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"userId": c.Locals("userId")})
 	})
 }
