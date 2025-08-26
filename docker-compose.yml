@@ -1,0 +1,23 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: be-ambis-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+  api:
+    build: .
+    container_name: be-ambis-api
+    depends_on:
+      - mongo
+    environment:
+      PORT: "8000"
+      MONGO_URI: "mongodb://mongo:27017"
+      MONGO_DB: "task_manager"
+      JWT_SECRET: "supersecretjwtkey"
+      ENABLE_REGISTER: "true"
+    ports:
+      - "8000:8000"
+volumes:
+  mongodata:
