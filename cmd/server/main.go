@@ -49,9 +49,10 @@ func main() {
 	taskH := handlers.NewTaskHandler(taskSvc)
 	noteH := handlers.NewNoteHandler(noteSvc)
 	timelineH := handlers.NewTimelineHandler()
+	devH := handlers.NewDevHandler(boardSvc, taskSvc)
 
-	// Routes
-	routes.Register(app, authH, boardH, taskH, noteH, timelineH)
+	// RoutesS
+	routes.Register(app, authH, boardH, taskH, noteH, timelineH, devH)
 
 	log.Fatal(app.Listen(":" + config.Cfg.Port))
 }

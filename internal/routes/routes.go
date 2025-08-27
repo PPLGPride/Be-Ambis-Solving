@@ -13,6 +13,7 @@ func Register(
 	tasks *handlers.TaskHandler,
 	notes *handlers.NoteHandler,
 	timeline *handlers.TimelineHandler,
+	dev *handlers.DevHandler,
 ) {
 	api := app.Group("/api")
 
@@ -22,6 +23,7 @@ func Register(
 
 	// Protected
 	prot := api.Group("", middleware.JWTProtected())
+	prot.Post("/dev/seed", dev.Seed)
 
 	// Boards
 	prot.Post("/boards", boards.Create)
