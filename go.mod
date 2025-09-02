@@ -13,8 +13,14 @@ require (
 )
 
 require (
+	github.com/fasthttp/websocket v1.5.3 // indirect
+	github.com/savsgio/gotils v0.0.0-20230208104028-c358bd845dee // indirect
+)
+
+require (
 	github.com/andybalholm/brotli v1.1.0 // indirect
 	github.com/gofiber/adaptor/v2 v2.2.1 // indirect
+	github.com/gofiber/websocket/v2 v2.2.1
 	github.com/gofrs/uuid v4.0.0+incompatible // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/gomodule/redigo v1.8.4 // indirect
