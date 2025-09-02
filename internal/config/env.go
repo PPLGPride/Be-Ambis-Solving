@@ -20,7 +20,7 @@ var Cfg AppConfig
 func Load() {
 	_ = godotenv.Load()
 	Cfg = AppConfig{
-		Port:           getEnv("PORT", "8000"),
+		Port:           getEnv("PORT", "8080"),
 		MongoURI:       getEnv("MONGO_URI", "mongodb://localhost:27017"),
 		DBName:         getEnv("MONGO_DB", "task_manager"),
 		JWTSecret:      getEnv("JWT_SECRET", "devsecret"),

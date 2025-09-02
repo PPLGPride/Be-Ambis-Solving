@@ -1,28 +1,41 @@
+// Be-Ambis-Solving/internal/handlers/task_handler.go
+
 package handlers
 
 import (
 	"context"
+	"log" // Impor log untuk debugging
 	"time"
 
 	"github.com/PPLGPride/Be-Ambis-Solving/internal/models"
 	"github.com/PPLGPride/Be-Ambis-Solving/internal/services"
 	"github.com/PPLGPride/Be-Ambis-Solving/internal/utils"
 	"github.com/gofiber/fiber/v2"
+	socketio "github.com/googollee/go-socket.io" // Impor socket.io
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-type TaskHandler struct{ Svc services.TaskService }
+// 1. Tambahkan SocketServer ke dalam struct
+type TaskHandler struct {
+	Svc          services.TaskService
+	SocketServer *socketio.Server
+}
 
-func NewTaskHandler(s services.TaskService) *TaskHandler { return &TaskHandler{Svc: s} }
+// 2. Modifikasi constructor untuk menerima SocketServer
+func NewTaskHandler(s services.TaskService, so *socketio.Server) *TaskHandler {
+	return &TaskHandler{Svc: s, SocketServer: so}
+}
 
+// (Tipe taskCreateReq tidak berubah)
 type taskCreateReq struct {
+	// ...
 	Title       string             `json:"title"`
 	Description *string            `json:"description"`
 	ColumnID    string             `json:"columnId"`
-	Status      *models.TaskStatus `json:"status"` // optional; default dari kolom
+	Status      *models.TaskStatus `json:"status"`
 	DueDate     *time.Time         `json:"dueDate"`
-	Assignees   []string           `json:"assignees"` // hex oid
+	Assignees   []string           `json:"assignees"`
 }
 
 func (h *TaskHandler) Create(c *fiber.Ctx) error {
@@ -52,10 +65,17 @@ func (h *TaskHandler) Create(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
+
+	// 3. Broadcast event setelah berhasil
+	h.SocketServer.BroadcastToNamespace("/", "board_updated", nil)
+	log.Println("Broadcast [board_updated] setelah Create Task")
+
 	return c.Status(201).JSON(t)
 }
 
+// (Handler ListByBoard dan Get tidak perlu broadcast)
 func (h *TaskHandler) ListByBoard(c *fiber.Ctx) error {
+	// ... kode tidak berubah ...
 	boardID, err := utils.MustObjectID(c.Params("boardId"))
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid boardId"})
@@ -70,6 +90,7 @@ func (h *TaskHandler) ListByBoard(c *fiber.Ctx) error {
 }
 
 func (h *TaskHandler) Get(c *fiber.Ctx) error {
+	// ... kode tidak berubah ...
 	id, err := utils.MustObjectID(c.Params("id"))
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid id"})
@@ -83,12 +104,14 @@ func (h *TaskHandler) Get(c *fiber.Ctx) error {
 	return c.JSON(t)
 }
 
+// (Tipe taskUpdateReq tidak berubah)
 type taskUpdateReq struct {
+	// ...
 	Title       *string              `json:"title"`
 	Description *string              `json:"description"`
 	Status      *models.TaskStatus   `json:"status"`
 	Priority    *models.TaskPriority `json:"priority"`
-	ColumnID    *string              `json:"columnId"` // gunakan /move untuk DnD
+	ColumnID    *string              `json:"columnId"`
 	DueDate     *time.Time           `json:"dueDate"`
 	StartDate   *time.Time           `json:"startDate"`
 	Tags        *[]string            `json:"tags"`
@@ -123,7 +146,7 @@ func (h *TaskHandler) Update(c *fiber.Ctx) error {
 	}
 	if req.ColumnID != nil {
 		patch["columnId"] = *req.ColumnID
-	} // NOTE: untuk DnD gunakan endpoint move
+	}
 	if req.DueDate != nil {
 		patch["dueDate"] = req.DueDate
 	}
@@ -139,6 +162,11 @@ func (h *TaskHandler) Update(c *fiber.Ctx) error {
 	if err := h.Svc.Update(ctx, id, patch, uid); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
+
+	// 3. Broadcast event setelah berhasil
+	h.SocketServer.BroadcastToNamespace("/", "board_updated", nil)
+	log.Println("Broadcast [board_updated] setelah Update Task")
+
 	return c.SendStatus(204)
 }
 
@@ -152,12 +180,18 @@ func (h *TaskHandler) Delete(c *fiber.Ctx) error {
 	if err := h.Svc.Delete(ctx, id); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
+
+	// 3. Broadcast event setelah berhasil
+	h.SocketServer.BroadcastToNamespace("/", "board_updated", nil)
+	log.Println("Broadcast [board_updated] setelah Delete Task")
+
 	return c.SendStatus(204)
 }
 
+// (Tipe moveReq tidak berubah)
 type moveReq struct {
 	ToColumnID string `json:"toColumnId"`
-	ToPosition int    `json:"toPosition"` // posisi 1-based atau 0-based? → kita pakai 1-based di service ini
+	ToPosition int    `json:"toPosition"`
 }
 
 func (h *TaskHandler) Move(c *fiber.Ctx) error {
@@ -172,10 +206,16 @@ func (h *TaskHandler) Move(c *fiber.Ctx) error {
 	if req.ToPosition < 1 {
 		req.ToPosition = 1
 	}
+
 	ctx, cancel := context.WithTimeout(c.Context(), 5*time.Second)
 	defer cancel()
 	if err := h.Svc.Move(ctx, id, req.ToColumnID, req.ToPosition); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
+
+	// 3. Broadcast event setelah berhasil
+	h.SocketServer.BroadcastToNamespace("/", "board_updated", nil)
+	log.Println("Broadcast [board_updated] setelah Move Task")
+
 	return c.SendStatus(204)
 }
