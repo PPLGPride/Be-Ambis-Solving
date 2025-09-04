@@ -30,6 +30,16 @@ func main() {
 		log.Println("socket connected:", s.ID())
 		return nil
 	})
+	SocketServer.OnEvent("/", "join_board", func(s socketio.Conn, boardID string) {
+		log.Printf("socket %s join board %s", s.ID(), boardID)
+		s.Join(boardID)
+		s.Emit("Joined_board", boardID)
+	})
+	SocketServer.OnEvent("/", "leave_board", func(s socketio.Conn, boardID string) {
+		log.Printf("socket %s leave board %s", s.ID(), boardID)
+		s.Leave(boardID)
+		s.Emit("left_board", boardID)
+	})
 	SocketServer.OnError("/", func(s socketio.Conn, e error) {
 		log.Println("socket error:", e)
 	})

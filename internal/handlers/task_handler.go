@@ -1,30 +1,26 @@
-// Be-Ambis-Solving/internal/handlers/task_handler.go
-
 package handlers
 
 import (
 	"context"
-	"log" // Impor log untuk debugging
 	"time"
 
 	"github.com/PPLGPride/Be-Ambis-Solving/internal/models"
 	"github.com/PPLGPride/Be-Ambis-Solving/internal/services"
 	"github.com/PPLGPride/Be-Ambis-Solving/internal/utils"
 	"github.com/gofiber/fiber/v2"
-	socketio "github.com/googollee/go-socket.io" // Impor socket.io
+	socketio "github.com/googollee/go-socket.io"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // 1. Tambahkan SocketServer ke dalam struct
 type TaskHandler struct {
-	Svc          services.TaskService
-	SocketServer *socketio.Server
+	Svc    services.TaskService
+	Socket *socketio.Server
 }
 
-// 2. Modifikasi constructor untuk menerima SocketServer
-func NewTaskHandler(s services.TaskService, so *socketio.Server) *TaskHandler {
-	return &TaskHandler{Svc: s, SocketServer: so}
+func NewTaskHandler(s services.TaskService, sock *socketio.Server) *TaskHandler {
+	return &TaskHandler{Svc: s, Socket: sock}
 }
 
 // (Tipe taskCreateReq tidak berubah)
@@ -66,11 +62,13 @@ func (h *TaskHandler) Create(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	// 3. Broadcast event setelah berhasil
-	h.SocketServer.BroadcastToNamespace("/", "board_updated", nil)
-	log.Println("Broadcast [board_updated] setelah Create Task")
+	// 🔊 Broadcast ke room = boardID.Hex()
+	if h.Socket != nil {
+		h.Socket.BroadcastToRoom("/", boardID.Hex(), "task_created", t)
+	}
 
 	return c.Status(201).JSON(t)
+
 }
 
 // (Handler ListByBoard dan Get tidak perlu broadcast)
@@ -163,11 +161,16 @@ func (h *TaskHandler) Update(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	// 3. Broadcast event setelah berhasil
-	h.SocketServer.BroadcastToNamespace("/", "board_updated", nil)
-	log.Println("Broadcast [board_updated] setelah Update Task")
+	// notif ringan (ambil boardId dulu biar tahu room)
+	t, getErr := h.Svc.Get(ctx, id)
+	if getErr == nil && h.Socket != nil {
+		h.Socket.BroadcastToRoom("/", t.BoardID.Hex(), "task_updated", fiber.Map{
+			"id": t.ID.Hex(),
+		})
+	}
 
 	return c.SendStatus(204)
+
 }
 
 func (h *TaskHandler) Delete(c *fiber.Ctx) error {
@@ -175,17 +178,24 @@ func (h *TaskHandler) Delete(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid id"})
 	}
+
+	// Ambil task untuk tahu boardId
 	ctx, cancel := context.WithTimeout(c.Context(), 5*time.Second)
 	defer cancel()
+	t, _ := h.Svc.Get(ctx, id)
+
 	if err := h.Svc.Delete(ctx, id); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	// 3. Broadcast event setelah berhasil
-	h.SocketServer.BroadcastToNamespace("/", "board_updated", nil)
-	log.Println("Broadcast [board_updated] setelah Delete Task")
+	if t != nil && h.Socket != nil {
+		h.Socket.BroadcastToRoom("/", t.BoardID.Hex(), "task_deleted", fiber.Map{
+			"id": id.Hex(),
+		})
+	}
 
 	return c.SendStatus(204)
+
 }
 
 // (Tipe moveReq tidak berubah)
@@ -213,9 +223,16 @@ func (h *TaskHandler) Move(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	// 3. Broadcast event setelah berhasil
-	h.SocketServer.BroadcastToNamespace("/", "board_updated", nil)
-	log.Println("Broadcast [board_updated] setelah Move Task")
+	// Kita perlu tahu boardId untuk room. Ambil task-nya setelah move.
+	t, getErr := h.Svc.Get(ctx, id)
+	if getErr == nil && h.Socket != nil {
+		h.Socket.BroadcastToRoom("/", t.BoardID.Hex(), "task_moved", fiber.Map{
+			"id":         t.ID.Hex(),
+			"toColumnId": req.ToColumnID,
+			"toPosition": req.ToPosition,
+		})
+	}
 
 	return c.SendStatus(204)
+
 }
