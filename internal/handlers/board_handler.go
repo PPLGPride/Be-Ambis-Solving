@@ -11,7 +11,7 @@ import (
 	"github.com/PPLGPride/Be-Ambis-Solving/internal/services"
 	"github.com/PPLGPride/Be-Ambis-Solving/internal/utils"
 	"github.com/gofiber/fiber/v2"
-	socketio "github.com/googollee/go-socket.io" // Impor socket.io
+	socketio "github.com/googollee/go-socket.io"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
