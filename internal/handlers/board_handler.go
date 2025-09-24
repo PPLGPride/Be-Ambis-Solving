@@ -147,6 +147,9 @@ func (h *BoardHandler) Delete(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	log.Println("[SOCKET][EMIT] ns=/ event=board_updated payload=nil")
+	h.SocketServer.BroadcastToNamespace("/", "board_updated", nil)
+
 	// 3. Broadcast event setelah berhasil
 	h.SocketServer.BroadcastToNamespace("/", "board_updated", nil)
 	log.Println("Broadcast [board_updated] setelah Delete Board")

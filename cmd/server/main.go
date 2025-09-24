@@ -1,4 +1,3 @@
-// Be-Ambis-Solving/cmd/server/main.go
 package main
 
 import (
@@ -8,6 +7,7 @@ import (
 
 	"github.com/PPLGPride/Be-Ambis-Solving/internal/config"
 	"github.com/PPLGPride/Be-Ambis-Solving/internal/handlers"
+	"github.com/PPLGPride/Be-Ambis-Solving/internal/realtime"
 	"github.com/PPLGPride/Be-Ambis-Solving/internal/routes"
 	"github.com/PPLGPride/Be-Ambis-Solving/internal/services"
 
@@ -24,17 +24,22 @@ var SocketServer *socketio.Server
 func main() {
 	config.Load()
 
-	// --- Socket.IO server ---
+	SocketServer := realtime.New()
+	go func() {
+		if err := SocketServer.Serve(); err != nil {
+			log.Fatalf("socketio listen error: %v", err)
+		}
+	}()
 	SocketServer = socketio.NewServer(nil)
 	SocketServer.OnConnect("/", func(s socketio.Conn) error {
 		log.Println("socket connected:", s.ID())
 		return nil
 	})
-	SocketServer.OnEvent("/", "join_board", func(s socketio.Conn, boardID string) {
-		log.Printf("socket %s join board %s", s.ID(), boardID)
-		s.Join(boardID)
-		s.Emit("Joined_board", boardID)
+	SocketServer.OnEvent("/", "join_board", func(s socketio.Conn, boardId string) {
+		s.Join(boardId)
+		log.Println("[SOCKET] join:", s.ID(), "->", boardId)
 	})
+
 	SocketServer.OnEvent("/", "leave_board", func(s socketio.Conn, boardID string) {
 		log.Printf("socket %s leave board %s", s.ID(), boardID)
 		s.Leave(boardID)
@@ -52,14 +57,18 @@ func main() {
 		}
 	}()
 	defer SocketServer.Close()
-	// ------------------------
 
 	app := fiber.New(fiber.Config{AppName: "Be-Ambis-Solving"})
+	realtime.Mount(app, SocketServer)
+	app.All("/socket.io/*", adaptor.HTTPHandler(SocketServer))
 	app.Use(recover.New())
 	app.Use(logger.New())
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "*",
-		AllowHeaders: "Content-Type, Authorization",
+		AllowOrigins:     "*",
+		AllowMethods:     "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
+		ExposeHeaders:    "Content-Length",
+		AllowCredentials: false,
 	}))
 
 	// Healthcheck
@@ -72,7 +81,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// DI (services & handlers)
 	userSvc := services.NewUserService()
 	authSvc := services.NewAuthService(userSvc)
 	authH := handlers.NewAuthHandler(authSvc, userSvc)
@@ -81,20 +89,21 @@ func main() {
 	taskSvc := services.NewTaskService()
 	noteSvc := services.NewNoteService()
 
-	// Handler yang butuh SocketServer
 	boardH := handlers.NewBoardHandler(boardSvc, SocketServer)
 	taskH := handlers.NewTaskHandler(taskSvc, SocketServer)
 
 	noteH := handlers.NewNoteHandler(noteSvc)
 	timelineH := handlers.NewTimelineHandler()
 
-	// ✅ Dev handler untuk seed data
 	devH := handlers.NewDevHandler(boardSvc, taskSvc)
 
-	// ✅ Register routes (7 argumen)
 	routes.Register(app, authH, boardH, taskH, noteH, timelineH, devH)
 
-	// Socket.IO endpoint (pakai wildcard untuk long-polling/upgrade)
+	app.Use("/socket.io/*", func(c *fiber.Ctx) error {
+		log.Printf("[SOCKETIO] HIT %s", c.OriginalURL())
+		return c.Next()
+	})
+
 	app.All("/socket.io/*", adaptor.HTTPHandler(SocketServer))
 
 	log.Fatal(app.Listen(":" + config.Cfg.Port))
