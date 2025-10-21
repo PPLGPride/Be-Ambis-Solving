@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/PPLGPride/Be-Ambis-Solving/internal/config"
 	"github.com/PPLGPride/Be-Ambis-Solving/internal/handlers"
-	"github.com/PPLGPride/Be-Ambis-Solving/internal/realtime"
 	"github.com/PPLGPride/Be-Ambis-Solving/internal/routes"
 	"github.com/PPLGPride/Be-Ambis-Solving/internal/services"
 
@@ -17,6 +17,10 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	socketio "github.com/googollee/go-socket.io"
+	engineio "github.com/googollee/go-socket.io/engineio"
+	"github.com/googollee/go-socket.io/engineio/transport"
+	"github.com/googollee/go-socket.io/engineio/transport/polling"
+	"github.com/googollee/go-socket.io/engineio/transport/websocket"
 )
 
 var SocketServer *socketio.Server
@@ -24,13 +28,14 @@ var SocketServer *socketio.Server
 func main() {
 	config.Load()
 
-	SocketServer := realtime.New()
-	go func() {
-		if err := SocketServer.Serve(); err != nil {
-			log.Fatalf("socketio listen error: %v", err)
-		}
-	}()
-	SocketServer = socketio.NewServer(nil)
+	SocketServer = socketio.NewServer(&engineio.Options{
+		Transports: []transport.Transport{
+			&polling.Transport{},
+			&websocket.Transport{
+				CheckOrigin: func(r *http.Request) bool { return true },
+			},
+		},
+	})
 	SocketServer.OnConnect("/", func(s socketio.Conn) error {
 		log.Println("socket connected:", s.ID())
 		return nil
@@ -59,10 +64,6 @@ func main() {
 	defer SocketServer.Close()
 
 	app := fiber.New(fiber.Config{AppName: "Be-Ambis-Solving"})
-	realtime.Mount(app, SocketServer)
-	app.All("/socket.io/*", adaptor.HTTPHandler(SocketServer))
-	app.Use(recover.New())
-	app.Use(logger.New())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     "*",
 		AllowMethods:     "GET,POST,PUT,PATCH,DELETE,OPTIONS",
@@ -70,6 +71,9 @@ func main() {
 		ExposeHeaders:    "Content-Length",
 		AllowCredentials: false,
 	}))
+	app.All("/socket.io/*", adaptor.HTTPHandler(SocketServer))
+	app.Use(recover.New())
+	app.Use(logger.New())
 
 	// Healthcheck
 	app.Get("/health", func(c *fiber.Ctx) error { return c.SendString("ok") })
