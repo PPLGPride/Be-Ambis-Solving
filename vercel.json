@@ -1,0 +1,27 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/index.go",  
+      "use": "@vercel/go"
+    },
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": { 
+        "distDir": "frontend/dist",
+        "buildCommand": "npm run build --prefix frontend"
+      }
+    }
+  ],
+  "routes": [
+    { 
+      "src": "/api/(.*)", 
+      "dest": "api/index.go" 
+    },
+    { 
+      "src": "/(.*)", 
+      "dest": "frontend/dist/$1" 
+    }
+  ]
+}
